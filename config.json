@@ -6,5 +6,10 @@
     },
     "context":{
         "path":"./context"
+    },
+    "minecraft":{
+        "host":"localhost",
+        "port":33733,
+        "username":"Janet"
     }
 }

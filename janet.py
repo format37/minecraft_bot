@@ -108,17 +108,17 @@ class ChatAgent:
 
 class Bot:
     RANGE_GOAL = 1
-    BOT_USERNAME = 'Janet'
+    # BOT_USERNAME = 'Janet'
 
     def __init__(self):
         self.player_to_follow = None
         self.chat_history = []
-        self.config_loader = ConfigLoader('config.json')
+        self.config = ConfigLoader('config.json').config
         
         self.bot = mineflayer.createBot({
-            'host': '127.0.0.1',
-            'port': 33733,
-            'username': self.BOT_USERNAME
+            'host': self.config['minecraft']['host'],
+            'port': self.config['minecraft']['port'],
+            'username': self.config['minecraft']['username'],
         })
         self.bot.loadPlugin(pathfinder.pathfinder)
         logger.info("Started mineflayer")
@@ -142,14 +142,15 @@ class Bot:
 
     def handle_message(self, this, sender, message, *args):
         logger.info(f"Sender: {sender} Message: {message}")
-        if not self.BOT_USERNAME in message or sender == self.BOT_USERNAME:
+        if not self.config['minecraft']['username'] in message or \
+            sender == self.config['minecraft']['username']:
+            logger.info("Not a message for me")
             return
         self.chat_history = [] # Chat history have no benefits yet
-        # config_loader = ConfigLoader('config.json')
-        document_processor = DocumentProcessor(self.config_loader.config)
+        document_processor = DocumentProcessor(self.config)
         retriever = document_processor.process_documents()
 
-        chat_agent = ChatAgent(self.config_loader.config, retriever, self)
+        chat_agent = ChatAgent(self.config, retriever, self)
 
         user_input = f"Player: {sender}. Message: {message}"
         logger.info(f'sending:\n{user_input}')
