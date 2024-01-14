@@ -11,9 +11,18 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 #### Requirements
 * OpenAI API key
 * Minecraft runned server
+#### Installation
+```
+git clone https://github.com/format37/minecraft_bot.git
+cd minecraft_bot
+pip3 install -r requirements.txt
+```
 #### How to use
 * Configure the config.json
-* Run the janet.py
+* Run the bot.py
+```
+python3 bot.py
+```
 * After spawning the bot, call like this:
 ```
 Janet, come
