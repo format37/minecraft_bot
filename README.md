@@ -4,13 +4,13 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 #### Features
 * Come to player  
 * Follow the player  
-* Stop wollowing  
+* Stop following  
 * Search DuckDuckGo  
 * Search Wikipedia  
-* Retrieval on text files, stored in "context" folder
+* Retrieval of text files, stored in the "context" folder
 #### Requirements
 * OpenAI API key
-* Minecraft runned server
+* Minecraft running server
 #### Installation
 ```
 git clone https://github.com/format37/minecraft_bot.git
@@ -27,3 +27,5 @@ python3 bot.py
 ```
 Janet, come
 ```
+#### Token spending
+The token spending is not significant originally, because the regular messages are short and the chat history is disabled.
