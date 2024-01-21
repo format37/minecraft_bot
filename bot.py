@@ -16,6 +16,12 @@ from langchain.chains import RetrievalQA
 import time as py_time
 # from langchain.globals import set_debug
 # set_debug(True)
+# import pickle
+# import joblib
+# import dill
+# import cloudpickle
+# import os
+# import pandas as pd
 
 
 # Define the info logger
@@ -31,6 +37,9 @@ logger.addHandler(handler)
 mineflayer = require('mineflayer')
 pathfinder = require('mineflayer-pathfinder')
 blockfinder = require('mineflayer-blockfinder')(mineflayer)
+# autoeat = require('mineflayer-auto-eat')
+# autoeat = require('/home/alex/projects/minecraft_bot/node_modules/mineflayer-auto-eat/dist/index.js')
+# exit()
 
 class ConfigLoader:
     def __init__(self, config_filename='config.json'):
@@ -59,12 +68,11 @@ class DocumentProcessor:
     def process_documents(self):
         context_path = self.config['context']['path']
         loader = DirectoryLoader(context_path, glob="*", loader_cls=TextLoader)
-        docs = loader.load()
+        docs = loader.load()        
         embeddings = OpenAIEmbeddings(openai_api_key=self.config['openai']['api_key'])
         text_splitter = RecursiveCharacterTextSplitter()
         documents = text_splitter.split_documents(docs)
         vector = DocArrayInMemorySearch.from_documents(documents, embeddings)
-        print(f"### Vector processed!")
         return vector.as_retriever()
 
 
@@ -97,6 +105,12 @@ class ChatAgent:
                             "You may provide the name of player asking to stop", True),
                         (self.bot_instance.bot_action_take, "Command to take an item in Minecraft",
                             "Provide the name of the item to take", True),
+                        (self.bot_instance.bot_action_list_items, "Command to list items in Bot's inventory",
+                            "Provide the name of the bot", True),
+                        (self.bot_instance.bot_action_toss, "Command to toss an item stack from Bot's inventory",
+                            "Provide the name of the item to toss", True),
+                        (self.bot_instance.bot_action_go_sleep, "Command to go sleep in Minecraft",
+                            "Provide the name of the bed to sleep", True),
                         (self.bot_instance.bot_action_find, "Command to find an item in Minecraft",
                             "Provide the name of the item to find", True)
                       ]
@@ -238,6 +252,64 @@ class Bot:
         self.bot.equip(val)
         return f'Equipping {val}'
     
+    def bot_action_list_items(self, val: str) -> str:
+        self.bot.chat(f"Listing items")
+        """self.bot.inventory.items().forEach(item => {
+            self.bot.chat(`${item.name} x ${item.count}`)
+        })"""
+        # self.bot.chat(f"Inventory: {self.bot.inventory.slots}")
+        text = 'Inventory:'
+        for item in self.bot.inventory.items():
+            text += f"\n{item.count} x {item.name}"
+        # self.bot.chat(f"Inventory: {self.bot.inventory.items()}")
+        return text
+    
+    def bot_action_toss(self, val: str) -> str:
+        # Search the corresponding stack
+        for item in self.bot.inventory.items():
+            if item.name == val:
+                self.bot.tossStack(item)
+                return f'Tossing {val}'
+        return f'No {val} in inventory'
+    
+    def bot_action_go_sleep(self, val: str) -> str:
+        # Search the neares bed
+        self.bot.chat(f"Finding {val}")
+        def on_find(err, blockPoints):
+            logger.info(f"on_find call")
+            if err:
+                self.bot.chat(f'Error trying to find the chosen block: {err}')
+            elif blockPoints:
+                self.bot.chat(f'I found a {val} at {blockPoints[0].position}.')
+                # Move to the block
+                pos = blockPoints[0].position
+                self.bot.chat(f"Trying to sleep at {pos.x} {pos.y} {pos.z}")
+                try:
+                    # self.bot.sleep(pos)
+                    self.bot.sleep(blockPoints[0])
+                    return f'Sleeping at {pos.x} {pos.y} {pos.z}'
+                except Exception as e:
+                    self.bot.chat(f'Unable to sleep: {e}')
+                    return f'Unable to sleep: {e}'
+            else:
+                self.bot.chat("I couldn't find any mentioned blocks within 256.")
+        try:
+            block_id = eval(f'mcdata.blocksByName.{val}.id')
+        except Exception as e:
+            message = f'There is no block named {val}.'
+            self.bot.chat(message)
+            return message
+        
+        self.bot.chat(f'Block id {block_id}')
+        self.bot.findBlock({
+            'point': self.bot.entity.position,
+            'matching': block_id,
+            'maxDistance': 256,
+            'count': 1
+        }, on_find)
+
+        return f'Finding {val}'
+    
     def bot_action_find(self, val: str) -> str:
         self.bot.chat(f"Finding {val}")
         def on_find(err, blockPoints):
@@ -246,20 +318,26 @@ class Bot:
                 self.bot.chat(f'Error trying to find the chosen block: {err}')
                 # self.bot.quit('quitting')
             elif blockPoints:
-                self.bot.chat(f'I found a mentioned block at {blockPoints[0].position}.')
+                self.bot.chat(f'I found a {val} at {blockPoints[0].position}.')
                 # Move to the block
-                self.bot.pathfinder.setMovements(pathfinder.Movements(self.bot))
-                self.bot.pathfinder.setGoal(pathfinder.goals.GoalBlock(blockPoints[0].position.x, blockPoints[0].position.y, blockPoints[0].position.z))
+                movements = pathfinder.Movements(self.bot)
+                pos = blockPoints[0].position
+                self.bot.pathfinder.setMovements(movements)
+                """ https://note.com/mega_gorilla/n/n3fa94ad2ed36
+                await bot.pathfinder.goto(goal); // A very useful function. This function may change your main-hand equipment.
+                // Following are some Goals you can use:
+                new GoalNear(x, y, z, range); // Move the bot to a block within the specified range of the specified block. `x`, `y`, `z`, and `range` are `number`
+                new GoalXZ(x, z); // Useful for long-range goals that don't have a specific Y level. `x` and `z` are `number`
+                new GoalGetToBlock(x, y, z); // Not get into the block, but get directly adjacent to it. Useful for fishing, farming, filling bucket, and beds. `x`, `y`, and `z` are `number`
+                new GoalFollow(entity, range); // Follow the specified entity within the specified range. `entity` is `Entity`, `range` is `number`
+                new GoalPlaceBlock(position, bot.world, {}); // Position the bot in order to place a block. `position` is `Vec3`
+                new GoalLookAtBlock(position, bot.world, {}); // Path into a position where a blockface of the block at position is visible. `position` is `Vec3`"""
+                logger.info(f"Moving to {pos.x} {pos.y} {pos.z} RANGE_GOAL: {self.RANGE_GOAL}")
+                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(pos.x, pos.y, pos.z, self.RANGE_GOAL))
+                # GoalLookAtBlock(position, bot.world, {});
+                self.bot.pathfinder.setGoal(pathfinder.goals.GoalLookAtBlock(pos, self.bot.world, {}))
             else:
                 self.bot.chat("I couldn't find any mentioned blocks within 256.")
-                # self.bot.quit('quitting')
-        # Check if the block exists
-        """if not hasattr(mcdata.blocksByName, val):
-            message = f'There is no block named {val}.'
-            self.bot.chat(message)
-            return message"""
-
-            # self.bot.quit('quitting')
         try:
             block_id = eval(f'mcdata.blocksByName.{val}.id')
         except Exception as e:

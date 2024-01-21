@@ -7,7 +7,10 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 * Janet, stop  
 * Janet, what the weather tomorrow in London?  
 * Janet, i am looking for iron_ore  
-* Janet, search in kniowledge base the coordinates of home
+* Janet, sleep at purple_bed
+* Janet, search in the knowledge base the coordinates of home
+* Janet, what items do you have in your inventory?
+* Janet, toss dirt
 #### Requirements
 * OpenAI API key
 * Minecraft running server
