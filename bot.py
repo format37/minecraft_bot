@@ -22,6 +22,7 @@ import time as py_time
 # import cloudpickle
 # import os
 # import pandas as pd
+from langchain_community.llms import Ollama
 
 
 # Define the info logger
@@ -37,6 +38,7 @@ logger.addHandler(handler)
 mineflayer = require('mineflayer')
 pathfinder = require('mineflayer-pathfinder')
 blockfinder = require('mineflayer-blockfinder')(mineflayer)
+vec3 = require('vec3')
 # autoeat = require('mineflayer-auto-eat')
 # autoeat = require('/home/alex/projects/minecraft_bot/node_modules/mineflayer-auto-eat/dist/index.js')
 # exit()
@@ -46,8 +48,8 @@ class ConfigLoader:
         self.config_filename = config_filename
         self.config = self.load_config()
 
-        if self.config['openai']['api_key'] == '':
-            self.config['openai']['api_key'] = input("Please enter your OpenAI API key: ")
+        """if self.config['openai']['api_key'] == '':
+            self.config['openai']['api_key'] = input("Please enter your OpenAI API key: ")""" # TODO: Enable
 
     def load_config(self):
         with open(self.config_filename, 'r') as file:
@@ -89,11 +91,13 @@ class ChatAgent:
         self.agent = self.initialize_agent()
 
     def initialize_agent(self):
-        llm = ChatOpenAI(
+        """llm = ChatOpenAI(
             openai_api_key=self.config['openai']['api_key'],
             model=self.config['openai']['model'],
             temperature=self.config['openai']['temperature']
-        )
+        )"""
+        # llm = Ollama(model="llama2")
+        llm = Ollama(model="mistral")
 
         tools = [self.create_structured_tool(func, name, description, return_direct)
                  for func, name, description, return_direct in [
@@ -112,21 +116,23 @@ class ChatAgent:
                         (self.bot_instance.bot_action_go_sleep, "Command to go sleep in Minecraft",
                             "Provide the name of the bed to sleep", True),
                         (self.bot_instance.bot_action_find, "Command to find an item in Minecraft",
-                            "Provide the name of the item to find", True)
+                            "Provide the name of the item to find", True),
+                        (self.bot_instance.bot_action_place_block, "Command to place a block in Minecraft",
+                            "Provide the name of the block to place", True),
                       ]
                  ]
-        tools.append(DuckDuckGoSearchRun())
+        # tools.append(DuckDuckGoSearchRun())
         # wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
         # tools.append(wikipedia)
-        tools.append(
+        """tools.append(
             Tool(
                 args_schema=DocumentInput,
                 name='Knowledge base',
                 description="Providing a game information from the knowledge base",
                 func=RetrievalQA.from_chain_type(llm=llm, retriever=self.retriever),
             )
-        )
-
+        )"""
+        # tools = []
         return initialize_agent(
             tools,
             llm,
@@ -155,7 +161,7 @@ class Bot:
         self.chat_history = []
         self.config = ConfigLoader('config.json').config
         self.document_processor = DocumentProcessor(self.config)
-        self.retriever = self.document_processor.process_documents()
+        # self.retriever = self.document_processor.process_documents() # TODO: Enable
         
         self.bot = mineflayer.createBot({
             'host': self.config['minecraft']['host'],
@@ -191,9 +197,13 @@ class Bot:
             sender == self.config['minecraft']['username']:
             logger.info("Not a message for me")
             return
-        self.chat_history = [] # Chat history have no benefits yet
+        # self.chat_history = [] # Chat history have no benefits yet
+        # Remove messages, instead of latest 3
+        if len(self.chat_history) > 3:
+            self.chat_history = self.chat_history[-3:]
 
-        chat_agent = ChatAgent(self.config, self.retriever, self)
+        chat_agent = ChatAgent(self.config, None, self)
+        # chat_agent = ChatAgent(self.config, self.retriever, self) # TODO: Enable
 
         user_input = f"Player: {sender}. Message: {message}"
         logger.info(f'sending:\n{user_input}')
@@ -211,6 +221,8 @@ class Bot:
             player_position = self.bot.players[self.player_to_follow].entity.position
             while self.bot.entity.position.distanceTo(player_position) <= self.RANGE_GOAL * 2:
                 if self.player_to_follow is None:
+                    logger.info("Player to follow is None. Stopping")
+                    self.bot.pathfinder.setGoal(None)
                     return
                 logger.info("Bot already near goal. Not moving")
                 py_time.sleep(1)
@@ -251,6 +263,115 @@ class Bot:
     def bot_action_take(self, val: str) -> str:
         self.bot.equip(val)
         return f'Equipping {val}'
+    
+    def build_map_to_vector(self, val: str) -> str:
+        places = []
+        map_lines = val.strip().split('\n')
+        num_lines = len(map_lines)
+        num_characters = len(map_lines[0])
+
+        for i in range(num_lines):
+            for j in range(num_characters):
+                if map_lines[i][j] == '1':
+                    x = j - num_characters // 2
+                    y = 0
+                    z = i - num_lines // 2
+                    places.append(vec3(x, y, z))
+
+        return places
+        # logger.info(f"map: {map}")
+    
+    def bot_action_place_block(self, val: str) -> str:
+        logger.info(f'Placing block "{val}"')
+        block_id = eval(f'mcdata.blocksByName.{val.strip()}.id')
+        logger.info(f"block_id: {block_id}")
+        # Assume that bot can build in a 7x7x7 area and the bot is in the center
+        map = """01111110
+10000001
+10000001
+10000001
+10000001
+10000001
+01111110"""
+        map = """0000000
+0011100
+0100010
+0100010
+0100010
+0011100
+0000000"""
+        
+        places = self.build_map_to_vector(map)
+        logger.info(f"places: {places}")
+        # return f'Placing block {val}'
+        """places = [
+            vec3(-2, 0, 2),
+            vec3(-1, 0, 2),
+            vec3(0, 0, 2),
+            vec3(1, 0, 2),
+            vec3(2, 0, 2),
+            vec3(-2, 1, 2),
+            vec3(-1, 1, 2),
+            vec3(0, 1, 2),
+            vec3(1, 1, 2),
+            vec3(2, 1, 2),
+        ]"""
+        for place in places:
+
+            logger.info(f"entity position: {self.bot.entity.position}")
+            look_position = vec3(
+                int(self.bot.entity.position.x+place.x), 
+                int(self.bot.entity.position.y+place.y), 
+                int(self.bot.entity.position.z+place.z)
+                )
+            logger.info(f"look_position: {look_position}")
+            move_position = vec3(
+                int(self.bot.entity.position.x+place.x), 
+                int(self.bot.entity.position.y+place.y), # height
+                int(self.bot.entity.position.z+place.z-1)
+                )
+            # Look at GoalPlaceBlock position
+            self.bot.lookAt(look_position)
+
+            distances = [
+                abs(self.bot.entity.position.x+place.x - self.bot.entity.position.x),
+                abs(self.bot.entity.position.y+place.y - self.bot.entity.position.y)
+            ]
+            # abs(self.bot.entity.position.z+place.z - self.bot.entity.position.z)
+            logger.info(f"distances: {distances}")
+            
+            if max(distances) == 0:
+                logger.info(f"move_position: {move_position}")
+                # Go to GoalPlaceBlock position
+                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalLookAtBlock(pos, self.bot.world, {}))
+                # If distance is bigger than 1 block
+                # if self.bot.entity.position.distanceTo(move_position) > 1:
+                logger.info(f"Distance is {self.bot.entity.position.distanceTo(look_position)}")
+                movements = pathfinder.Movements(self.bot)
+                # pos = target.position
+                self.bot.pathfinder.setMovements(movements)
+                # logger.info(f"FFF Moving to {move_position.x} {move_position.y} {move_position.z} RANGE_GOAL: {self.RANGE_GOAL}")
+                self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(move_position.x, move_position.y, move_position.z, 0))
+                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalPlaceBlock(move_position, self.bot.world, {}))
+                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalLookAtBlock(look_position, self.bot.world, {}))
+                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(look_position.x, look_position.y))
+            
+            # vector is a relative position from the bot
+            vector = vec3(
+                self.bot.entity.position.x - look_position.x,
+                self.bot.entity.position.y - look_position.y,
+                self.bot.entity.position.z - look_position.z
+            )
+            logger.info(f"vector: {vector}")
+            # Get a reference block from look_position
+            referenceBlock = self.bot.blockAt(look_position)
+            try:
+                self.bot.placeBlock(referenceBlock, vector)
+            except Exception as e:
+                logger.error(f"bot_action_place_block Error: {e}")
+                self.bot.chat(f'Unable to place {val}')
+        return f'Job finished'
+        
     
     def bot_action_list_items(self, val: str) -> str:
         self.bot.chat(f"Listing items")
@@ -322,6 +443,7 @@ class Bot:
                 # Move to the block
                 movements = pathfinder.Movements(self.bot)
                 pos = blockPoints[0].position
+                logger.info(f"pos: {pos}")
                 self.bot.pathfinder.setMovements(movements)
                 """ https://note.com/mega_gorilla/n/n3fa94ad2ed36
                 await bot.pathfinder.goto(goal); // A very useful function. This function may change your main-hand equipment.
