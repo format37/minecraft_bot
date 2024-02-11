@@ -11,9 +11,10 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 * Janet, search in the knowledge base the coordinates of home
 * Janet, what items do you have in your inventory?
 * Janet, toss dirt
+* Janet, build Cross
+* Janet, build Simple house
 #### Requirements
-* OpenAI API key
-* Minecraft running server
+* Minecraft running server with port 33733
 #### Installation
 ```
 git clone https://github.com/format37/minecraft_bot.git

@@ -117,8 +117,8 @@ class ChatAgent:
                             "Provide the name of the bed to sleep", True),
                         (self.bot_instance.bot_action_find, "Command to find an item in Minecraft",
                             "Provide the name of the item to find", True),
-                        (self.bot_instance.bot_action_place_block, "Command to place a block in Minecraft",
-                            "Provide the name of the block to place", True),
+                        (self.bot_instance.bot_action_build, "Command to build something in Minecraft",
+                            "Provide the name of the item to build", True),
                       ]
                  ]
         # tools.append(DuckDuckGoSearchRun())
@@ -228,7 +228,8 @@ class Bot:
                 py_time.sleep(1)
             self.move_to_position(self.player_to_follow)
         else:
-            self.bot.chat("Goal reached.")
+            # self.bot.chat("Goal reached.")
+            logger.info("Goal reached.")
 
     def move_to_position(self, sender):
         try:
@@ -243,7 +244,7 @@ class Bot:
             logger.info(f"Moving to {pos.x} {pos.y} {pos.z} RANGE_GOAL: {self.RANGE_GOAL}")
             self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(pos.x, pos.y, pos.z, self.RANGE_GOAL))
         except Exception as e:
-            logger.error(f"move_to_position Error: {e}")
+            logger.info(f"move_to_position Error: {e}")
             self.bot.chat(f"move_to_position interrupted")
 
     def bot_action_come(self, val: str) -> str:
@@ -288,80 +289,201 @@ class Bot:
                     places.append(vec3(x, y, z))
 
         return places
+    
+    def find_no_air_position(self, target_position):
+        collizion_shift_x = 0
+        collizion_shift_y = 0
+        for i in range(3):
+            for j in range(3):
+                for k in range(3):
+                    if i == 1 and j == 1 and k == 1:
+                        continue
+                    block = self.bot.blockAt(target_position.add(vec3(i-1, j-1, k-1)))
+                    if block.type != "air":
+                        collizion_shift_x = i-1
+                        collizion_shift_y = k-1
+                        return collizion_shift_x, collizion_shift_y
+        return collizion_shift_x, collizion_shift_y
 
-    def bot_action_place_block(self, val: str) -> str:
+    def bot_action_build(self, val: str) -> str:
         """
         Places blocks based on a map, building upwards from the top left corner across multiple levels.
         
         :param val: str, the block type to be placed.
         :return: str, a status message indicating the result of the operation.
         """
-        logger.info(f'Placing block "{val}"')
-
-        levels = 2  # Number of levels to build
-        block_id = eval(f'mcdata.blocksByName.{val.strip()}.id')
-        logger.info(f"block_id: {block_id}")
+        logger.info(f'Building: "{val}"')
 
         # Calculate origin from bot position, considering the top left corner
         origin = vec3(int(self.bot.entity.position.x), int(self.bot.entity.position.y), int(self.bot.entity.position.z))
 
         total_successful_placements = 0
         total_attempts = 0
-
-        for level in range(levels):
-
-            level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
-            logger.info(f"level_origin: {level_origin}")
-
-            # Define the map, ensuring it's the correct representation for starting from the top left
-            map = """0000000
+        item_to_build = val.strip()
+        build_library = {
+            "Cross": {
+                "cobblestone": ["""0001000""",
+"""0001000""",
+"""0011100""",
+"""0001000""",],
+"dirt": ["""0010100""",
+"""0010100""",
+"""0000000""",
+"""0000000""",]},
+            "Simple house": {
+                "cobblestone": ["""0110110
+0100010
+0100010
+0100010
+0111110""",
+"""0110110
+0100010
 0000000
+0100010
+0110110""",
+"""0111110
+0100010
+0100010
+0100010
+0111110"""],
+"glass": ["""0000000
+0000000
+0000000
+0000000
+0000000""",
+"""0000000
 0000000
 0100010
 0000000
+0001000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000"""],
+"oak_log": ["""0000000
+0000000
+0000000
+0000000
+0000000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000""",
+"""1000001
+1000001
+1000001
+1000001
+1000001"""],
+"dirt": ["""1000001
+1000001
+1000001
+1000001
+1000001""",
+"""1000001
+1000001
+1000001
+1000001
+1000001""",
+"""0000000
+0000000
+0000000
 0000000
 0000000"""
+]
+                }
+        }
+        if item_to_build not in build_library:
+            return f'No build library for {item_to_build}'
 
-            # Get global placement coordinates for the current level
-            places = self.build_map_to_vector(map, level_origin, 0)  # No need to pass level height here, already adjusted in level_origin
-            logger.info(f"places: {places}")
+        first_material = list(build_library[item_to_build].keys())[0]
+        levels_count = len(build_library[item_to_build][first_material])
+        for level in range(levels_count):
+            
+            for material in build_library[item_to_build]:
+                # If level of the material is zeros, skip
+                have_ones = False
+                for i in range(len(build_library[item_to_build][material][level])):
+                    if '1' in build_library[item_to_build][material][i]:
+                        have_ones = True
+                        break
+                if not have_ones:
+                    logger.info(f"Skipping level {level} for {material}")
+                    continue
 
-            successful_placements = 0
+                # block_id = int(eval(f'mcdata.blocksByName.{material}.id'))
+                # block_object = eval(f'mcdata.blocksByName.{material}')
+                # Take the chosen material from the inventory
+                logger.info(f"equipping: {material}")
+                # self.bot.equip(block_id, 'hand')
+                # item = self.bot.inventory.findInventoryItem(block_id)
+                item = self.bot.inventory.findInventoryItem(material)
+                if item is None:
+                    # return f'No {material} in inventory'
+                    # Chat to the player
+                    self.bot.chat(f'No {material} in inventory. Skipping')
+                    continue
+                self.bot.equip(item)
 
-            for target_position in places:
-                logger.info(f"Target position for block placement: {target_position}")
+                level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
+                logger.info(f"level_origin: {level_origin}")
 
-                try:
-                    movements = pathfinder.Movements(self.bot)
-                    self.bot.pathfinder.setMovements(movements)
-                    """self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(
-                        target_position.x, 
-                        target_position.y, 
-                        target_position.z, 
-                        1
-                        ))"""
-                    self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
-                        target_position.x, 
-                        target_position.y, 
-                        target_position.z
-                        ))
-                    py_time.sleep(1)
-                except Exception as e:
-                    logger.error(f"move_to_position Error: {e}")
-                    self.bot.chat(f"move_to_position interrupted")
+                build_map = build_library[item_to_build][material][level]
 
-                referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
-                face_vector = vec3(0, 1, 0)  # Assume placing on top
+                # Get global placement coordinates for the current level
+                places = self.build_map_to_vector(build_map, level_origin, 0)  # No need to pass level height here, already adjusted in level_origin
+                logger.info(f"places: {places}")
 
-                try:
-                    self.bot.placeBlock(referenceBlock, face_vector)
-                    successful_placements += 1
-                except Exception as e:
-                    logger.error(f"Error placing block at {target_position}: {e}")
-                    self.bot.chat(f'Unable to place {val}')
+                successful_placements = 0
+                
+                for target_position in places:
+                    logger.info(f"Target position for block placement: {target_position}")
+                    # If hand is empty
+                    if self.bot.heldItem is None:
+                        self.bot.chat('I have no item in my hand')
+                        # return f'No item in hand'
+                        break
 
-            total_successful_placements += successful_placements
-            total_attempts += len(places)
+                    try:
+                        distance_to_goal = self.bot.entity.position.distanceTo(target_position)
+                        logger.info(f"Distance to goal: {distance_to_goal}")
+                        movements = pathfinder.Movements(self.bot)
+                        self.bot.pathfinder.setMovements(movements)
+                        # collizion_shift_x = 1 if distance_to_goal == 0 else 2  # Shift to avoid collision
+                        # Find the position that is not air
+                        # collizion_shift_x, collizion_shift_z = self.find_no_air_position(target_position)
+                        collizion_shift_x, collizion_shift_z = 1, 1
+
+                        """self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
+                            target_position.x+collizion_shift_x, 
+                            origin.y, 
+                            target_position.z+collizion_shift_z
+                            ))"""
+                        # ToXY
+                        self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(
+                            target_position.x+collizion_shift_x, 
+                            target_position.z+collizion_shift_z
+                            ))
+                        py_time.sleep(0.5)
+                    except Exception as e:
+                        logger.info(f"move_to_position Error: {e}")
+                        self.bot.chat(f"move_to_position interrupted")
+
+                    referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
+                    if referenceBlock.type == "air":  # Assuming 'air' means no block. Adjust according to your environment's representation.
+                        logger.info(f"Reference block: {referenceBlock}")
+                    face_vector = vec3(0, 1, 0)  # Assume placing on top
+
+                    try:
+                        self.bot.placeBlock(referenceBlock, face_vector)
+                        successful_placements += 1
+                    except Exception as e:
+                        logger.info(f"Error placing block at {target_position}: {e}")
+                        self.bot.chat(f'Unable to place {val}')
+
+                total_successful_placements += successful_placements
+                total_attempts += len(places)
 
         return f'Job finished with {total_successful_placements} successful placements out of {total_attempts} attempts'
 
@@ -446,8 +568,9 @@ class Bot:
                 try:
                     self.bot.placeBlock(referenceBlock, face_vector)
                     successful_placements += 1
+                    # py_time.sleep(1) # TODO: Remove
                 except Exception as e:
-                    logger.error(f"Error placing block at {target_position}: {e}")
+                    logger.info(f"Error placing block at {target_position}: {e}")
                     self.bot.chat(f'Unable to place {val}')
 
             total_successful_placements += successful_placements
