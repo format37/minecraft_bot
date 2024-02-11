@@ -266,6 +266,107 @@ class Bot:
     
     def build_map_to_vector(self, val: str, origin: vec3, level_height: int = 0) -> list:
         """
+        Converts a string map representation to global coordinates based on a given origin and level height, starting from the top left corner.
+
+        :param val: str, a map representation where '1' indicates a block placement.
+        :param origin: vec3, the global reference point for the map's top left corner.
+        :param level_height: int, height adjustment for building levels (defaults to 0).
+        :return: list of vec3 instances representing global positions for block placement.
+        """
+        places = []
+        map_lines = val.strip().split('\n')
+        num_lines = len(map_lines)
+
+        for i in range(num_lines):
+            num_characters = len(map_lines[i])
+
+            for j in range(num_characters):
+                if map_lines[i][j] == '1':
+                    x = j + origin.x
+                    y = origin.y + level_height  # Y-coordinate adjusted based on the level
+                    z = i + origin.z
+                    places.append(vec3(x, y, z))
+
+        return places
+
+    def bot_action_place_block(self, val: str) -> str:
+        """
+        Places blocks based on a map, building upwards from the top left corner across multiple levels.
+        
+        :param val: str, the block type to be placed.
+        :return: str, a status message indicating the result of the operation.
+        """
+        logger.info(f'Placing block "{val}"')
+
+        levels = 2  # Number of levels to build
+        block_id = eval(f'mcdata.blocksByName.{val.strip()}.id')
+        logger.info(f"block_id: {block_id}")
+
+        # Calculate origin from bot position, considering the top left corner
+        origin = vec3(int(self.bot.entity.position.x), int(self.bot.entity.position.y), int(self.bot.entity.position.z))
+
+        total_successful_placements = 0
+        total_attempts = 0
+
+        for level in range(levels):
+
+            level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
+            logger.info(f"level_origin: {level_origin}")
+
+            # Define the map, ensuring it's the correct representation for starting from the top left
+            map = """0000000
+0000000
+0000000
+0100010
+0000000
+0000000
+0000000"""
+
+            # Get global placement coordinates for the current level
+            places = self.build_map_to_vector(map, level_origin, 0)  # No need to pass level height here, already adjusted in level_origin
+            logger.info(f"places: {places}")
+
+            successful_placements = 0
+
+            for target_position in places:
+                logger.info(f"Target position for block placement: {target_position}")
+
+                try:
+                    movements = pathfinder.Movements(self.bot)
+                    self.bot.pathfinder.setMovements(movements)
+                    """self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(
+                        target_position.x, 
+                        target_position.y, 
+                        target_position.z, 
+                        1
+                        ))"""
+                    self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
+                        target_position.x, 
+                        target_position.y, 
+                        target_position.z
+                        ))
+                    py_time.sleep(1)
+                except Exception as e:
+                    logger.error(f"move_to_position Error: {e}")
+                    self.bot.chat(f"move_to_position interrupted")
+
+                referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
+                face_vector = vec3(0, 1, 0)  # Assume placing on top
+
+                try:
+                    self.bot.placeBlock(referenceBlock, face_vector)
+                    successful_placements += 1
+                except Exception as e:
+                    logger.error(f"Error placing block at {target_position}: {e}")
+                    self.bot.chat(f'Unable to place {val}')
+
+            total_successful_placements += successful_placements
+            total_attempts += len(places)
+
+        return f'Job finished with {total_successful_placements} successful placements out of {total_attempts} attempts'
+
+    def build_map_to_vector_v0(self, val: str, origin: vec3, level_height: int = 0) -> list:
+        """
         Converts a string map representation to global coordinates based on a given origin and level height.
 
         :param val: str, a map representation where '1' indicates a block placement.
@@ -288,7 +389,7 @@ class Bot:
 
         return places
 
-    def bot_action_place_block(self, val: str) -> str:
+    def bot_action_place_block_v0(self, val: str) -> str:
         """
         Places blocks based on a map, building upwards across multiple levels.
         :param val: str, the block type to be placed.
@@ -308,18 +409,6 @@ class Bot:
         total_attempts = 0
 
         for level in range(levels):
-            # if level > 0:
-            try:
-                movements = pathfinder.Movements(self.bot)
-                # Set bot target to current bot position + level
-                pos = vec3(origin.x, origin.y + level + 1, origin.z)
-                self.bot.pathfinder.setMovements(movements)
-                logger.info(f"Moving to {pos.x} {pos.y} {pos.z} RANGE_GOAL: {0}")
-                self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(pos.x, pos.y, pos.z, 0))
-                # py_time.sleep(1)
-            except Exception as e:
-                logger.error(f"move_to_position Error: {e}")
-                self.bot.chat(f"move_to_position interrupted")
                 
             level_origin = vec3(origin.x, origin.y, origin.z)  # Adjust origin for each level
             logger.info(f"level_origin: {level_origin}")
