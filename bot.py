@@ -264,12 +264,13 @@ class Bot:
         self.bot.equip(val)
         return f'Equipping {val}'
     
-    def build_map_to_vector(self, val: str, origin: vec3) -> list:
+    def build_map_to_vector(self, val: str, origin: vec3, level_height: int = 0) -> list:
         """
-        Converts a string map representation to global coordinates based on a given origin.
+        Converts a string map representation to global coordinates based on a given origin and level height.
 
         :param val: str, a map representation where '1' indicates a block placement.
         :param origin: vec3, the global reference point for the map.
+        :param level_height: int, height adjustment for building levels (defaults to 0).
         :return: list of vec3 instances representing global positions for block placement.
         """
         places = []
@@ -280,30 +281,51 @@ class Bot:
         for i in range(num_lines):
             for j in range(num_characters):
                 if map_lines[i][j] == '1':
-                    # Calculate global coordinates relative to origin
                     x = j - num_characters // 2 + origin.x
-                    y = origin.y  # Assuming the y-axis doesn't change. Adjust if necessary.
+                    y = origin.y + level_height # Adjust y-coordinate based on the level
                     z = i - num_lines // 2 + origin.z
                     places.append(vec3(x, y, z))
 
         return places
 
-    # def bot_action_place_block(self, val: str, origin: vec3) -> str:
     def bot_action_place_block(self, val: str) -> str:
         """
-        Places blocks based on a map, relative to a given global origin.
-
+        Places blocks based on a map, building upwards across multiple levels.
         :param val: str, the block type to be placed.
-        :param origin: vec3, the global reference point for the map.
         :return: str, a status message indicating the result of the operation.
         """
-        # Log the block being placed
         logger.info(f'Placing block "{val}"')
+
+        levels = 6  # Number of levels to build
         block_id = eval(f'mcdata.blocksByName.{val.strip()}.id')
         logger.info(f"block_id: {block_id}")
 
-        # Define the map
-        map = """1000001
+        # Origin is the bot's current position at the start
+        # Calculate origin from bot position using vec3 and int
+        origin = vec3(int(self.bot.entity.position.x), int(self.bot.entity.position.y), int(self.bot.entity.position.z))
+
+        total_successful_placements = 0
+        total_attempts = 0
+
+        for level in range(levels):
+            # if level > 0:
+            try:
+                movements = pathfinder.Movements(self.bot)
+                # Set bot target to current bot position + level
+                pos = vec3(origin.x, origin.y + level + 1, origin.z)
+                self.bot.pathfinder.setMovements(movements)
+                logger.info(f"Moving to {pos.x} {pos.y} {pos.z} RANGE_GOAL: {0}")
+                self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(pos.x, pos.y, pos.z, 0))
+                # py_time.sleep(1)
+            except Exception as e:
+                logger.error(f"move_to_position Error: {e}")
+                self.bot.chat(f"move_to_position interrupted")
+                
+            level_origin = vec3(origin.x, origin.y, origin.z)  # Adjust origin for each level
+            logger.info(f"level_origin: {level_origin}")
+
+            # Define the map
+            map = """1000001
 0011100
 0100010
 0100010
@@ -311,37 +333,38 @@ class Bot:
 0011100
 1000001"""
 
-        # Get global placement coordinates
-        places = self.build_map_to_vector(map, vec3(0, 0, 0))
-        logger.info(f"places: {places}")
-        # Origin is the bot's current position
-        origin = self.bot.entity.position
+            map = """0000000
+0000000
+0000000
+0100010
+0000000
+0000000
+0000000"""
 
-        # Get global placement coordinates
-        places = self.build_map_to_vector(map, origin)
-        logger.info(f"places: {places}")
+            # Get global placement coordinates for the current level
+            places = self.build_map_to_vector(map, level_origin, level)
+            logger.info(f"places: {places}")
 
-        successful_placements = 0
+            successful_placements = 0
 
-        for place in places:
-            target_position = place  # Already global, no need to add to current position
-            logger.info(f"Target position for block placement: {target_position}")
+            for target_position in places:
+                # target_position = place
+                logger.info(f"Target position for block placement: {target_position}")
 
-            # Handle bot movement and placement
-            referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
+                referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
+                face_vector = vec3(0, 1, 0)  # Assume placing on top
 
-            face_vector = vec3(0, 1, 0)  # Assume always placing on top
+                try:
+                    self.bot.placeBlock(referenceBlock, face_vector)
+                    successful_placements += 1
+                except Exception as e:
+                    logger.error(f"Error placing block at {target_position}: {e}")
+                    self.bot.chat(f'Unable to place {val}')
 
-            try:
-                self.bot.placeBlock(referenceBlock, face_vector)
-                successful_placements += 1
-            except Exception as e:
-                logger.error(f"Error placing block at {target_position}: {e}")
-                self.bot.chat(f'Unable to place {val}')
+            total_successful_placements += successful_placements
+            total_attempts += len(places)
 
-            # py_time.sleep(1)  # Delay
-
-        return f'Job finished with {successful_placements} successful placements out of {len(places)} attempts'
+        return f'Job finished with {total_successful_placements} successful placements out of {total_attempts} attempts'
     
     def bot_action_list_items(self, val: str) -> str:
         self.bot.chat(f"Listing items")
