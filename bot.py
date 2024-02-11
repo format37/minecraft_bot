@@ -264,7 +264,14 @@ class Bot:
         self.bot.equip(val)
         return f'Equipping {val}'
     
-    def build_map_to_vector(self, val: str) -> str:
+    def build_map_to_vector(self, val: str, origin: vec3) -> list:
+        """
+        Converts a string map representation to global coordinates based on a given origin.
+
+        :param val: str, a map representation where '1' indicates a block placement.
+        :param origin: vec3, the global reference point for the map.
+        :return: list of vec3 instances representing global positions for block placement.
+        """
         places = []
         map_lines = val.strip().split('\n')
         num_lines = len(map_lines)
@@ -273,105 +280,68 @@ class Bot:
         for i in range(num_lines):
             for j in range(num_characters):
                 if map_lines[i][j] == '1':
-                    x = j - num_characters // 2
-                    y = 0
-                    z = i - num_lines // 2
+                    # Calculate global coordinates relative to origin
+                    x = j - num_characters // 2 + origin.x
+                    y = origin.y  # Assuming the y-axis doesn't change. Adjust if necessary.
+                    z = i - num_lines // 2 + origin.z
                     places.append(vec3(x, y, z))
 
         return places
-        # logger.info(f"map: {map}")
-    
+
+    # def bot_action_place_block(self, val: str, origin: vec3) -> str:
     def bot_action_place_block(self, val: str) -> str:
+        """
+        Places blocks based on a map, relative to a given global origin.
+
+        :param val: str, the block type to be placed.
+        :param origin: vec3, the global reference point for the map.
+        :return: str, a status message indicating the result of the operation.
+        """
+        # Log the block being placed
         logger.info(f'Placing block "{val}"')
         block_id = eval(f'mcdata.blocksByName.{val.strip()}.id')
         logger.info(f"block_id: {block_id}")
-        # Assume that bot can build in a 7x7x7 area and the bot is in the center
-        map = """01111110
-10000001
-10000001
-10000001
-10000001
-10000001
-01111110"""
-        map = """0000000
+
+        # Define the map
+        map = """1000001
 0011100
 0100010
 0100010
 0100010
 0011100
-0000000"""
-        
-        places = self.build_map_to_vector(map)
+1000001"""
+
+        # Get global placement coordinates
+        places = self.build_map_to_vector(map, vec3(0, 0, 0))
         logger.info(f"places: {places}")
-        # return f'Placing block {val}'
-        """places = [
-            vec3(-2, 0, 2),
-            vec3(-1, 0, 2),
-            vec3(0, 0, 2),
-            vec3(1, 0, 2),
-            vec3(2, 0, 2),
-            vec3(-2, 1, 2),
-            vec3(-1, 1, 2),
-            vec3(0, 1, 2),
-            vec3(1, 1, 2),
-            vec3(2, 1, 2),
-        ]"""
+        # Origin is the bot's current position
+        origin = self.bot.entity.position
+
+        # Get global placement coordinates
+        places = self.build_map_to_vector(map, origin)
+        logger.info(f"places: {places}")
+
+        successful_placements = 0
+
         for place in places:
+            target_position = place  # Already global, no need to add to current position
+            logger.info(f"Target position for block placement: {target_position}")
 
-            logger.info(f"entity position: {self.bot.entity.position}")
-            look_position = vec3(
-                int(self.bot.entity.position.x+place.x), 
-                int(self.bot.entity.position.y+place.y), 
-                int(self.bot.entity.position.z+place.z)
-                )
-            logger.info(f"look_position: {look_position}")
-            move_position = vec3(
-                int(self.bot.entity.position.x+place.x), 
-                int(self.bot.entity.position.y+place.y), # height
-                int(self.bot.entity.position.z+place.z-1)
-                )
-            # Look at GoalPlaceBlock position
-            self.bot.lookAt(look_position)
+            # Handle bot movement and placement
+            referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
 
-            distances = [
-                abs(self.bot.entity.position.x+place.x - self.bot.entity.position.x),
-                abs(self.bot.entity.position.y+place.y - self.bot.entity.position.y)
-            ]
-            # abs(self.bot.entity.position.z+place.z - self.bot.entity.position.z)
-            logger.info(f"distances: {distances}")
-            
-            if max(distances) == 0:
-                logger.info(f"move_position: {move_position}")
-                # Go to GoalPlaceBlock position
-                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalLookAtBlock(pos, self.bot.world, {}))
-                # If distance is bigger than 1 block
-                # if self.bot.entity.position.distanceTo(move_position) > 1:
-                logger.info(f"Distance is {self.bot.entity.position.distanceTo(look_position)}")
-                movements = pathfinder.Movements(self.bot)
-                # pos = target.position
-                self.bot.pathfinder.setMovements(movements)
-                # logger.info(f"FFF Moving to {move_position.x} {move_position.y} {move_position.z} RANGE_GOAL: {self.RANGE_GOAL}")
-                self.bot.pathfinder.setGoal(pathfinder.goals.GoalNear(move_position.x, move_position.y, move_position.z, 0))
-                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalPlaceBlock(move_position, self.bot.world, {}))
-                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalLookAtBlock(look_position, self.bot.world, {}))
-                # self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(look_position.x, look_position.y))
-            
-            # vector is a relative position from the bot
-            vector = vec3(
-                self.bot.entity.position.x - look_position.x,
-                self.bot.entity.position.y - look_position.y,
-                self.bot.entity.position.z - look_position.z
-            )
-            logger.info(f"vector: {vector}")
-            # Get a reference block from look_position
-            referenceBlock = self.bot.blockAt(look_position)
+            face_vector = vec3(0, 1, 0)  # Assume always placing on top
+
             try:
-                self.bot.placeBlock(referenceBlock, vector)
+                self.bot.placeBlock(referenceBlock, face_vector)
+                successful_placements += 1
             except Exception as e:
-                logger.error(f"bot_action_place_block Error: {e}")
+                logger.error(f"Error placing block at {target_position}: {e}")
                 self.bot.chat(f'Unable to place {val}')
-        return f'Job finished'
-        
+
+            # py_time.sleep(1)  # Delay
+
+        return f'Job finished with {successful_placements} successful placements out of {len(places)} attempts'
     
     def bot_action_list_items(self, val: str) -> str:
         self.bot.chat(f"Listing items")
