@@ -376,11 +376,11 @@ class Bot:
 1000001
 1000001
 1000001"""],
-"dirt": ["""1000001
-1000001
-1000001
-1000001
-1000001""",
+"dirt": ["""1001001
+1011101
+1011101
+1011101
+1011101""",
 """1000001
 1000001
 1000001
@@ -444,31 +444,38 @@ class Bot:
                         self.bot.chat('I have no item in my hand')
                         # return f'No item in hand'
                         break
+                    placed = False
+                    for collizion_shift_x in [-1,1]:
+                        if placed:
+                            break
+                        for collizion_shift_z in [-1,1]:
+                            if placed:
+                                break
+                            try:
+                                distance_to_goal = self.bot.entity.position.distanceTo(target_position)
+                                logger.info(f"Distance to goal: {distance_to_goal}")
+                                movements = pathfinder.Movements(self.bot)
+                                self.bot.pathfinder.setMovements(movements)
+                                # collizion_shift_x = 1 if distance_to_goal == 0 else 2  # Shift to avoid collision
+                                # Find the position that is not air
+                                # collizion_shift_x, collizion_shift_z = self.find_no_air_position(target_position)
+                                # collizion_shift_x, collizion_shift_z = shift_x, shift_z
 
-                    try:
-                        distance_to_goal = self.bot.entity.position.distanceTo(target_position)
-                        logger.info(f"Distance to goal: {distance_to_goal}")
-                        movements = pathfinder.Movements(self.bot)
-                        self.bot.pathfinder.setMovements(movements)
-                        # collizion_shift_x = 1 if distance_to_goal == 0 else 2  # Shift to avoid collision
-                        # Find the position that is not air
-                        # collizion_shift_x, collizion_shift_z = self.find_no_air_position(target_position)
-                        collizion_shift_x, collizion_shift_z = 1, 1
-
-                        """self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
-                            target_position.x+collizion_shift_x, 
-                            origin.y, 
-                            target_position.z+collizion_shift_z
-                            ))"""
-                        # ToXY
-                        self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(
-                            target_position.x+collizion_shift_x, 
-                            target_position.z+collizion_shift_z
-                            ))
-                        py_time.sleep(0.5)
-                    except Exception as e:
-                        logger.info(f"move_to_position Error: {e}")
-                        self.bot.chat(f"move_to_position interrupted")
+                                """self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
+                                    target_position.x+collizion_shift_x, 
+                                    origin.y, 
+                                    target_position.z+collizion_shift_z
+                                    ))"""
+                                # ToXY
+                                self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(
+                                    target_position.x+collizion_shift_x, 
+                                    target_position.z+collizion_shift_z
+                                    ))
+                                placed = True
+                                py_time.sleep(0.5)                                
+                            except Exception as e:
+                                logger.info(f"move_to_position Error: {e}")
+                                self.bot.chat(f"move_to_position interrupted")
 
                     referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
                     if referenceBlock.type == "air":  # Assuming 'air' means no block. Adjust according to your environment's representation.
