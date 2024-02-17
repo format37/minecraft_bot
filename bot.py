@@ -526,12 +526,6 @@ class Bot:
                                 if collizion_shift_x == 0 and collizion_shift_z == 0:
                                     continue
 
-
-
-                                
-
-
-
                                 # Moving ++
                                 target_x = target_position.x+collizion_shift_x
                                 target_y = target_position.y-1
@@ -568,9 +562,19 @@ class Bot:
                                     logger.info(f"move_to_position Error: {e}")
                                     self.bot.chat(f"move_to_position interrupted")
                                 # Moving --
-                                    
+                                
+                                # Placing ++
                                 # referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
-                                new_ref_position = vec3(target_position.x+collizion_shift_x, target_position.y-1, target_position.z+collizion_shift_z)
+                                """new_ref_position = vec3(
+                                    target_position.x+collizion_shift_x, 
+                                    target_position.y-1, 
+                                    target_position.z+collizion_shift_z
+                                    )"""
+                                new_ref_position = vec3(
+                                    target_position.x, 
+                                    target_position.y-1, 
+                                    target_position.z
+                                    )
                                 referenceBlock = self.bot.blockAt(new_ref_position)
                                 logger.info(f"Reference block position: {referenceBlock.position}")
                                 # if referenceBlock.type == "air":  # Assuming 'air' means no block. Adjust according to your environment's representation.
@@ -583,9 +587,9 @@ class Bot:
                                     placed = True
                                 except Exception as e:
                                     logger.info(f"Error placing block at {target_position}: {e}")
-                                    self.bot.chat(f'Try {try_number}: a to place {material} at {target_position}')
-                                
+                                    self.bot.chat(f'Try {try_number}: Uasble to place {material} at {target_position} on {referenceBlock.position}')
                                 try_number += 1
+                                # Placing --
 
                 total_successful_placements += successful_placements
                 total_attempts += len(places)
