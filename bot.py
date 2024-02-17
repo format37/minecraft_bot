@@ -91,13 +91,13 @@ class ChatAgent:
         self.agent = self.initialize_agent()
 
     def initialize_agent(self):
-        """llm = ChatOpenAI(
+        llm = ChatOpenAI(
             openai_api_key=self.config['openai']['api_key'],
             model=self.config['openai']['model'],
             temperature=self.config['openai']['temperature']
-        )"""
+        )
         # llm = Ollama(model="llama2")
-        llm = Ollama(model="mistral")
+        # llm = Ollama(model="mistral")
 
         tools = [self.create_structured_tool(func, name, description, return_direct)
                  for func, name, description, return_direct in [
@@ -314,8 +314,15 @@ class Bot:
         """
         logger.info(f'Building: "{val}"')
 
+        building_shift_x = 1
+        building_shift_z = 1
+
         # Calculate origin from bot position, considering the top left corner
-        origin = vec3(int(self.bot.entity.position.x), int(self.bot.entity.position.y), int(self.bot.entity.position.z))
+        origin = vec3(
+            int(self.bot.entity.position.x+building_shift_x), 
+            int(self.bot.entity.position.y), 
+            int(self.bot.entity.position.z+building_shift_z)
+            )
 
         total_successful_placements = 0
         total_attempts = 0
@@ -345,7 +352,22 @@ class Bot:
 0100010
 0100010
 0100010
-0111110"""],
+0111110""",
+"""0011100
+0000000
+0000000
+0000000
+0011100""",
+"""0001000
+0000000
+0000000
+0000000
+0001000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000"""],
 "glass": ["""0000000
 0000000
 0000000
@@ -356,6 +378,21 @@ class Bot:
 0100010
 0000000
 0001000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000""",
 """0000000
 0000000
 0000000
@@ -375,7 +412,22 @@ class Bot:
 1000001
 1000001
 1000001
-1000001"""],
+1000001""",
+"""0100010
+0100010
+0100010
+0100010
+0100010""",
+"""0010100
+0010100
+0010100
+0010100
+0010100""",
+"""0001000
+0001000
+0001000
+0001000
+0001000"""],
 "dirt": ["""1001001
 1011101
 1011101
@@ -386,11 +438,26 @@ class Bot:
 1011101
 1011101
 1001001""",
-"""1000001
-1011101
-1011101
-1011101
-1000001"""
+"""0000000
+0011100
+0011100
+0011100
+0000000""",
+"""0000000
+0011100
+0011100
+0011100
+0000000""",
+"""0000000
+0001000
+0001000
+0001000
+0000000""",
+"""0000000
+0000000
+0000000
+0000000
+0000000"""
 ]
                 }
         }
@@ -422,8 +489,9 @@ class Bot:
                 if item is None:
                     # return f'No {material} in inventory'
                     # Chat to the player
-                    self.bot.chat(f'No {material} in inventory. Skipping')
-                    continue
+                    self.bot.chat(f'No {material} in inventory. Using current item in hand: {self.bot.heldItem.name}')
+                    # material = self.bot.heldItem.name
+                    # continue
                 self.bot.equip(item)
 
                 level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
@@ -444,50 +512,80 @@ class Bot:
                         self.bot.chat('I have no item in my hand')
                         # return f'No item in hand'
                         break
+                    try_number = 0
+                    max_tries = 4
                     placed = False
-                    for collizion_shift_x in [-1,1]:
-                        if placed:
-                            break
-                        for collizion_shift_z in [-1,1]:
+                    while not placed and try_number < max_tries:
+                        logger.info(f"try: {try_number} of {max_tries}")
+                        for collizion_shift_x in [-1,0,1]:
                             if placed:
                                 break
-                            try:
-                                distance_to_goal = self.bot.entity.position.distanceTo(target_position)
-                                logger.info(f"Distance to goal: {distance_to_goal}")
-                                movements = pathfinder.Movements(self.bot)
-                                self.bot.pathfinder.setMovements(movements)
-                                # collizion_shift_x = 1 if distance_to_goal == 0 else 2  # Shift to avoid collision
-                                # Find the position that is not air
-                                # collizion_shift_x, collizion_shift_z = self.find_no_air_position(target_position)
-                                # collizion_shift_x, collizion_shift_z = shift_x, shift_z
+                            for collizion_shift_z in [-1,0,1]:
+                                if placed:
+                                    break
+                                if collizion_shift_x == 0 and collizion_shift_z == 0:
+                                    continue
 
-                                """self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
-                                    target_position.x+collizion_shift_x, 
-                                    origin.y, 
-                                    target_position.z+collizion_shift_z
-                                    ))"""
-                                # ToXY
-                                self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(
-                                    target_position.x+collizion_shift_x, 
-                                    target_position.z+collizion_shift_z
-                                    ))
-                                placed = True
-                                py_time.sleep(0.5)                                
-                            except Exception as e:
-                                logger.info(f"move_to_position Error: {e}")
-                                self.bot.chat(f"move_to_position interrupted")
 
-                    referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
-                    if referenceBlock.type == "air":  # Assuming 'air' means no block. Adjust according to your environment's representation.
-                        logger.info(f"Reference block: {referenceBlock}")
-                    face_vector = vec3(0, 1, 0)  # Assume placing on top
 
-                    try:
-                        self.bot.placeBlock(referenceBlock, face_vector)
-                        successful_placements += 1
-                    except Exception as e:
-                        logger.info(f"Error placing block at {target_position}: {e}")
-                        self.bot.chat(f'Unable to place {val}')
+                                
+
+
+
+                                # Moving ++
+                                target_x = target_position.x+collizion_shift_x
+                                target_y = target_position.y-1
+                                target_z = target_position.z+collizion_shift_z                            
+                                block_in_target_position = self.bot.blockAt(vec3(target_x, target_y, target_z))
+                                if block_in_target_position.name == "air":
+                                    logger.info(f"Skipping block in target position: {block_in_target_position.name}. Position: {target_x} {target_y} {target_z}")
+                                    continue
+                                else:
+                                    logger.info(f"Moving to block in target position: {block_in_target_position.name}. Position: {target_x} {target_y} {target_z}")
+                                try:
+                                    distance_to_goal = self.bot.entity.position.distanceTo(target_position)
+                                    logger.info(f"Distance to goal: {distance_to_goal}")
+                                    movements = pathfinder.Movements(self.bot)
+                                    self.bot.pathfinder.setMovements(movements)
+                                    # collizion_shift_x = 1 if distance_to_goal == 0 else 2  # Shift to avoid collision
+                                    # Find the position that is not air
+                                    # collizion_shift_x, collizion_shift_z = self.find_no_air_position(target_position)
+                                    # collizion_shift_x, collizion_shift_z = shift_x, shift_z
+
+                                    """self.bot.pathfinder.setGoal(pathfinder.goals.GoalGetToBlock(
+                                        target_position.x+collizion_shift_x, 
+                                        origin.y, 
+                                        target_position.z+collizion_shift_z
+                                        ))"""
+                                    # ToXY
+                                    self.bot.pathfinder.setGoal(pathfinder.goals.GoalXZ(
+                                        target_position.x+collizion_shift_x, 
+                                        target_position.z+collizion_shift_z
+                                        ))
+                                    # placed = True
+                                    py_time.sleep(0.5) # TODO: Check that goar reached
+                                except Exception as e:
+                                    logger.info(f"move_to_position Error: {e}")
+                                    self.bot.chat(f"move_to_position interrupted")
+                                # Moving --
+                                    
+                                # referenceBlock = self.bot.blockAt(target_position.subtract(vec3(0, 1, 0)))
+                                new_ref_position = vec3(target_position.x+collizion_shift_x, target_position.y-1, target_position.z+collizion_shift_z)
+                                referenceBlock = self.bot.blockAt(new_ref_position)
+                                logger.info(f"Reference block position: {referenceBlock.position}")
+                                # if referenceBlock.type == "air":  # Assuming 'air' means no block. Adjust according to your environment's representation.
+                                    
+                                face_vector = vec3(0, 1, 0)  # Assume placing on top
+
+                                try:
+                                    self.bot.placeBlock(referenceBlock, face_vector)
+                                    successful_placements += 1
+                                    placed = True
+                                except Exception as e:
+                                    logger.info(f"Error placing block at {target_position}: {e}")
+                                    self.bot.chat(f'Try {try_number}: a to place {material} at {target_position}')
+                                
+                                try_number += 1
 
                 total_successful_placements += successful_placements
                 total_attempts += len(places)

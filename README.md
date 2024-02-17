@@ -23,7 +23,11 @@ pip3 install -r requirements.txt
 ```
 #### How to use
 * Configure the config.json
-* Run the bot.py
+* Define your timeout to avoid [JSPyBridge](https://github.com/extremeheat/JSPyBridge) limit.
+```
+export REQ_TIMEOUT=400000
+```
+* Run bot.py
 ```
 python3 bot.py
 ```
