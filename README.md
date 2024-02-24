@@ -17,6 +17,8 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 * Minecraft running server with port 33733
 #### Installation
 ```
+conda create --name minecraft python=3.9.16
+conda activate minecraft
 git clone https://github.com/format37/minecraft_bot.git
 cd minecraft_bot
 pip3 install -r requirements.txt

@@ -23,7 +23,18 @@ import time as py_time
 # import os
 # import pandas as pd
 from langchain_community.llms import Ollama
+import os
 
+"""from apscheduler.schedulers.blocking import BlockingScheduler
+scheduler = BlockingScheduler()
+# your code goes here
+scheduler.start()"""
+
+# Print os environ variables: [LANGCHAIN_TRACING_V2, LANGCHAIN_ENDPOINT, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT]
+print(f"LANGCHAIN_TRACING_V2: [{os.environ.get('LANGCHAIN_TRACING_V2')}]")
+print(f"LANGCHAIN_ENDPOINT: [{os.environ.get('LANGCHAIN_ENDPOINT')}]")
+print(f"LANGCHAIN_API_KEY: [{os.environ.get('LANGCHAIN_API_KEY')}]")
+print(f"LANGCHAIN_PROJECT: [{os.environ.get('LANGCHAIN_PROJECT')}]")
 
 # Define the info logger
 logger = logging.getLogger(__name__)
@@ -91,13 +102,13 @@ class ChatAgent:
         self.agent = self.initialize_agent()
 
     def initialize_agent(self):
-        """llm = ChatOpenAI(
+        llm = ChatOpenAI(
             openai_api_key=self.config['openai']['api_key'],
             model=self.config['openai']['model'],
             temperature=self.config['openai']['temperature']
-        )"""
+        )
         # llm = Ollama(model="llama2")
-        llm = Ollama(model="mistral")
+        # llm = Ollama(model="mistral")
         
         build_prompt_description = """Please, compose the blueprint of the user's requested object in JSON format including material and lines for each level.
 It is required to build a dirt support block under the block that will be on the next level because you can build only on top of a block and you can't build on air.
@@ -117,7 +128,10 @@ The JSON format is strickly, for example:
     ]
 }
 You need to pass your JSON string."""
-        build_prompt_description = "Build the object by the JSON blueprint that is provided"
+        # build_prompt_description = "Build the object by the JSON blueprint that is provided"
+        # Read built_prompt_description from a file
+        with open('build_prompt_description.txt', 'r') as file:
+            build_prompt_description = file.read()
 
         tools = [self.create_structured_tool(func, name, description, return_direct)
                  for func, name, description, return_direct in [
@@ -423,7 +437,7 @@ class Bot:
                                     break
                                 if collizion_shift_x == 0 and collizion_shift_z == 0:
                                     continue
-
+                                try_number += 1
                                 # Moving ++
                                 target_x = target_position.x+collizion_shift_x
                                 target_y = target_position.y-1
@@ -486,7 +500,7 @@ class Bot:
                                 except Exception as e:
                                     logger.info(f"Error placing block at {target_position}: {e}")
                                     self.bot.chat(f'Try {try_number}: Uasble to place {material} at {target_position} on {referenceBlock.position}')
-                                try_number += 1
+                                
                                 # Placing --
 
                 total_successful_placements += successful_placements
