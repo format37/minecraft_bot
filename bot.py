@@ -109,26 +109,6 @@ class ChatAgent:
         )
         # llm = Ollama(model="llama2")
         # llm = Ollama(model="mistral")
-        
-        build_prompt_description = """Please, compose the blueprint of the user's requested object in JSON format including material and lines for each level.
-It is required to build a dirt support block under the block that will be on the next level because you can build only on top of a block and you can't build on air.
-The JSON format is strickly, for example:
-{
-    "cobblestone": [
-        "0001000",
-        "0001000",
-        "0011100",
-        "0001000"
-    ],
-    "dirt": [
-        "0010100",
-        "0010100",
-        "0000000",
-        "0000000"
-    ]
-}
-You need to pass your JSON string."""
-        # build_prompt_description = "Build the object by the JSON blueprint that is provided"
         # Read built_prompt_description from a file
         with open('build_prompt_description.txt', 'r') as file:
             build_prompt_description = file.read()
@@ -341,6 +321,24 @@ class Bot:
                         collizion_shift_y = k-1
                         return collizion_shift_x, collizion_shift_y
         return collizion_shift_x, collizion_shift_y
+    
+    def add_dirt_support(self, blueprint):
+        if 'dirt' not in blueprint:
+            num_cols = len(blueprint[list(blueprint.keys())[0]][0])
+            blueprint['dirt'] = [['0'] * num_cols for _ in blueprint[list(blueprint.keys())[0]]]
+        
+        materials = list(blueprint.keys())
+        materials.remove('dirt')
+        
+        for i in range(len(blueprint[materials[0]])):
+            row = ['1'] * len(blueprint[materials[0]][i])
+            for material in materials:
+                for j, c in enumerate(blueprint[material][i]):
+                    if c == '1':
+                        row[j] = '0' 
+            blueprint['dirt'][i] = ''.join(row)
+                
+        return blueprint
 
     def bot_action_build(self, blueprint_str: str) -> str:
         """
@@ -349,11 +347,13 @@ class Bot:
         :param val: str, the block type to be placed.
         :return: str, a status message indicating the result of the operation.
         """
+        # Replace spaces by empty string
+        blueprint_str = blueprint_str.replace(" ", "")
         # Extract json from string
-        
         logger.info(f'Building: "{blueprint_str}"')
-        # exit()
         blueprint = json.loads(blueprint_str)
+        # Add dirt support
+        blueprint = self.add_dirt_support(blueprint)
 
         building_shift_x = 1
         building_shift_z = 1
