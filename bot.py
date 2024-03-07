@@ -1,3 +1,4 @@
+from typing import Union
 import json
 import logging
 from pydantic import BaseModel, Field
@@ -24,6 +25,8 @@ import time as py_time
 # import pandas as pd
 from langchain_community.llms import Ollama
 import os
+from langchain_anthropic import ChatAnthropic
+from langchain_anthropic import AnthropicLLM
 
 """from apscheduler.schedulers.blocking import BlockingScheduler
 scheduler = BlockingScheduler()
@@ -32,8 +35,8 @@ scheduler.start()"""
 
 # Print os environ variables: [LANGCHAIN_TRACING_V2, LANGCHAIN_ENDPOINT, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT]
 print(f"LANGCHAIN_TRACING_V2: [{os.environ.get('LANGCHAIN_TRACING_V2')}]")
-print(f"LANGCHAIN_ENDPOINT: [{os.environ.get('LANGCHAIN_ENDPOINT')}]")
-print(f"LANGCHAIN_API_KEY: [{os.environ.get('LANGCHAIN_API_KEY')}]")
+# print(f"LANGCHAIN_ENDPOINT: [{os.environ.get('LANGCHAIN_ENDPOINT')}]")
+# print(f"LANGCHAIN_API_KEY: [{os.environ.get('LANGCHAIN_API_KEY')}]")
 print(f"LANGCHAIN_PROJECT: [{os.environ.get('LANGCHAIN_PROJECT')}]")
 
 # Define the info logger
@@ -102,13 +105,17 @@ class ChatAgent:
         self.agent = self.initialize_agent()
 
     def initialize_agent(self):
-        llm = ChatOpenAI(
+        """llm = ChatOpenAI(
             openai_api_key=self.config['openai']['api_key'],
             model=self.config['openai']['model'],
             temperature=self.config['openai']['temperature']
-        )
+        )"""
         # llm = Ollama(model="llama2")
         # llm = Ollama(model="mistral")
+        
+        # llm = AnthropicLLM(model='claude-2.1')
+        llm = ChatAnthropic(model='claude-3-opus-20240229')
+
         # Read built_prompt_description from a file
         with open('build_prompt_description.txt', 'r') as file:
             build_prompt_description = file.read()
@@ -224,7 +231,11 @@ class Bot:
 
         user_input = f"Player: {sender}. Message: {message}"
         logger.info(f'sending:\n{user_input}')
-        response = chat_agent.agent.run(input=user_input, chat_history=self.chat_history)
+        try:
+            response = chat_agent.agent.run(input=user_input, chat_history=self.chat_history)
+        except Exception as e:
+            logger.info(f"Error: {e}")
+            response = f"Error: {e}"
 
         self.chat_history.append(HumanMessage(content=message))
         self.chat_history.append(AIMessage(content=response))
@@ -282,29 +293,17 @@ class Bot:
         self.bot.equip(val)
         return f'Equipping {val}'
     
-    def build_map_to_vector(self, val: str, origin: vec3, level_height: int = 0) -> list:
-        """
-        Converts a string map representation to global coordinates based on a given origin and level height, starting from the top left corner.
-
-        :param val: str, a map representation where '1' indicates a block placement.
-        :param origin: vec3, the global reference point for the map's top left corner.
-        :param level_height: int, height adjustment for building levels (defaults to 0).
-        :return: list of vec3 instances representing global positions for block placement.
-        """
+    def build_map_to_vector(self, val: list, origin: vec3, level_height: int = 0) -> list:
         places = []
-        map_lines = val.strip().split('\n')
-        num_lines = len(map_lines)
-
+        num_lines = len(val)
         for i in range(num_lines):
-            num_characters = len(map_lines[i])
-
+            num_characters = len(val[i])
             for j in range(num_characters):
-                if map_lines[i][j] == '1':
+                if val[i][j] == '1':
                     x = j + origin.x
-                    y = origin.y + level_height  # Y-coordinate adjusted based on the level
+                    y = origin.y + level_height
                     z = i + origin.z
                     places.append(vec3(x, y, z))
-
         return places
     
     def find_no_air_position(self, target_position):
@@ -324,36 +323,44 @@ class Bot:
     
     def add_dirt_support(self, blueprint):
         if 'dirt' not in blueprint:
-            num_cols = len(blueprint[list(blueprint.keys())[0]][0])
-            blueprint['dirt'] = [['0'] * num_cols for _ in blueprint[list(blueprint.keys())[0]]]
+            first_key = list(blueprint.keys())[0]
+            num_layers = len(blueprint[first_key])
+            num_lines = len(blueprint[first_key][0])
+            width = len(blueprint[first_key][0][0])
+            
+            # Invert all values in all materials
+            for material in blueprint:
+                for layer in range(num_layers):
+                    for line in range(num_lines):
+                        blueprint[material][layer][line] = ''.join('0' if c == '1' else '1' for c in blueprint[material][layer][line])
+            
+            # Add dirt filled with ones
+            blueprint['dirt'] = [['1' * width] * num_lines for _ in range(num_layers)]
+            
+            # Multiply each material table onto the dirt table
+            for material in blueprint:
+                if material == 'dirt':
+                    continue
+                for layer in range(num_layers):
+                    for line in range(num_lines):
+                        blueprint['dirt'][layer][line] = ''.join(str(int(a) * int(b)) for a, b in zip(blueprint['dirt'][layer][line], blueprint[material][layer][line]))
+            
+            # Convert all materials except dirt back to one
+            for material in blueprint:
+                if material == 'dirt':
+                    continue
+                for layer in range(num_layers):
+                    for line in range(num_lines):
+                        blueprint[material][layer][line] = ''.join('1' if c == '0' else '0' for c in blueprint[material][layer][line])
         
-        materials = list(blueprint.keys())
-        materials.remove('dirt')
-        
-        for i in range(len(blueprint[materials[0]])):
-            row = ['1'] * len(blueprint[materials[0]][i])
-            for material in materials:
-                for j, c in enumerate(blueprint[material][i]):
-                    if c == '1':
-                        row[j] = '0' 
-            blueprint['dirt'][i] = ''.join(row)
-                
         return blueprint
 
     def bot_action_build(self, blueprint_str: str) -> str:
-        """
-        Places blocks based on a map, building upwards from the top left corner across multiple levels.
-        
-        :param val: str, the block type to be placed.
-        :return: str, a status message indicating the result of the operation.
-        """
-        # Replace spaces by empty string
         blueprint_str = blueprint_str.replace(" ", "")
-        # Extract json from string
-        logger.info(f'Building: "{blueprint_str}"')
         blueprint = json.loads(blueprint_str)
-        # Add dirt support
         blueprint = self.add_dirt_support(blueprint)
+
+        logger.info(f'Blueprint with support: "{blueprint}"')
 
         building_shift_x = 1
         building_shift_z = 1
@@ -379,12 +386,10 @@ class Bot:
         first_material = list(blueprint.keys())[0]
         levels_count = len(blueprint[first_material])
         for level in range(levels_count):
-            
             for material in blueprint:
-                # If level of the material is zeros, skip
                 have_ones = False
                 for i in range(len(blueprint[material][level])):
-                    if '1' in blueprint[material][i]:
+                    if '1' in blueprint[material][level][i]:
                         have_ones = True
                         break
                 if not have_ones:
@@ -406,14 +411,14 @@ class Bot:
                     # continue
                 self.bot.equip(item)
 
-                level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
+                # level_origin = vec3(origin.x, origin.y + level, origin.z)  # Level height adjusts the y-coordinate
+                level_origin = vec3(origin.x, origin.y, origin.z)  # Level height adjusts the y-coordinate
                 logger.info(f"level_origin: {level_origin}")
 
                 build_map = blueprint[material][level]
-
-                # Get global placement coordinates for the current level
-                places = self.build_map_to_vector(build_map, level_origin, 0)  # No need to pass level height here, already adjusted in level_origin
+                places = self.build_map_to_vector(build_map, level_origin, level)
                 logger.info(f"places: {places}")
+                # return f'debug ok'
 
                 successful_placements = 0
                 
@@ -499,7 +504,7 @@ class Bot:
                                     placed = True
                                 except Exception as e:
                                     logger.info(f"Error placing block at {target_position}: {e}")
-                                    self.bot.chat(f'Try {try_number}: Uasble to place {material} at {target_position} on {referenceBlock.position}')
+                                    self.bot.chat(f'Try {try_number}: Unable to place {material} at {target_position} on {referenceBlock.position}')
                                 
                                 # Placing --
 
@@ -867,7 +872,7 @@ class Bot:
 
 
 class BotActionType(BaseModel):
-    val: str = Field(description="Player name")
+    val: str = Field(default="", description="Corresponding parameter", required=True)
 
 if __name__ == "__main__":
     bot_instance = Bot()

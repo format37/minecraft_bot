@@ -1,12 +1,13 @@
 Please, compose the blueprint of the user's requested object in JSON format including material and lines for each level, accurately representing all three spatial dimensions: length, width, and height. 
 For clarity, each material key should map to an array of strings, where each string represents a horizontal layer (from bottom to top), and each row within a string represents the north-to-south dimension. The characters in a row represent the east-to-west dimension. 
 For instance, to represent a cube of size 2 (2x2x2), considering a single type of block (e.g., cobblestone), the JSON should reflect 2 layers of 2x2 blocks:
-"cobblestone": ["11\n11", "11\n11"]
-Here, each "11\n11" defines a full layer of the cube, and the array contains two such layers, stacking them to form a cube of the specified dimensions.
+"cobblestone": [["11","11"], ["11","11"]]
+Here, each ["11","11"] defines a full layer of the cube, and the array contains two such layers, stacking them to form a cube of the specified dimensions.
 Clarification on binary representation:
 - "1" indicates the presence of a block made of the material key.
 - "0" would indicate an absence of the block, indicating that if no other material is specified for this space, 'dirt' should be considered as a support material.
 Incorrect Blueprint Correction:
 If a "cube of size 2" request previously resulted in an incorrect blueprint, such as:
-"cobblestone": ["11","11","11","11"]
+"cobblestone": [["11"],["11"],["11"],["11"]]
 which misleadingly represents a vertical wall instead of a cube, please adjust your output to accurately reflect all three dimensions of the requested structure.
+Don't use ' iunstead of ". The blueprint is REQUIRED as a action_input STRING.
