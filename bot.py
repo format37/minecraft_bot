@@ -105,11 +105,13 @@ class ChatAgent:
         self.agent = self.initialize_agent()
 
     def initialize_agent(self):
-        """llm = ChatOpenAI(
+        llm = ChatOpenAI(
             openai_api_key=self.config['openai']['api_key'],
             model=self.config['openai']['model'],
-            temperature=self.config['openai']['temperature']
-        )"""
+            temperature=self.config['openai']['temperature'],
+            max_tokens=3000
+        )
+        # self.config['openai']['max_tokens'],
         # llm = Ollama(model="llama2")
         # llm = Ollama(model="mistral")
         
