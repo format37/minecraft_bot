@@ -1,43 +1,20 @@
-from typing import Union
-import json
-import logging
-from pydantic import BaseModel, Field
+# https://api.python.langchain.com/en/latest/agents/langchain.agents.tool_calling_agent.base.create_tool_calling_agent.html
+import os
+from langchain.agents import AgentExecutor, create_tool_calling_agent, tool
 from langchain.agents import Tool, initialize_agent
+from langchain.prompts.chat import ChatPromptTemplate
+from pydantic import BaseModel, Field
+from langchain.tools.base import StructuredTool
+from langchain.schema import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.document_loaders import TextLoader, DirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import DocArrayInMemorySearch
-from langchain_community.tools import StructuredTool
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
-from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.tools import WikipediaQueryRun
-from langchain_community.utilities import WikipediaAPIWrapper
 from javascript import require, On
-from langchain.chains import RetrievalQA
+import json
+import logging
 import time as py_time
-# from langchain.globals import set_debug
-# set_debug(True)
-# import pickle
-# import joblib
-# import dill
-# import cloudpickle
-# import os
-# import pandas as pd
-from langchain_community.llms import Ollama
-import os
 from langchain_anthropic import ChatAnthropic
-from langchain_anthropic import AnthropicLLM
-
-"""from apscheduler.schedulers.blocking import BlockingScheduler
-scheduler = BlockingScheduler()
-# your code goes here
-scheduler.start()"""
-
-# Print os environ variables: [LANGCHAIN_TRACING_V2, LANGCHAIN_ENDPOINT, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT]
-print(f"LANGCHAIN_TRACING_V2: [{os.environ.get('LANGCHAIN_TRACING_V2')}]")
-# print(f"LANGCHAIN_ENDPOINT: [{os.environ.get('LANGCHAIN_ENDPOINT')}]")
-# print(f"LANGCHAIN_API_KEY: [{os.environ.get('LANGCHAIN_API_KEY')}]")
-print(f"LANGCHAIN_PROJECT: [{os.environ.get('LANGCHAIN_PROJECT')}]")
 
 # Define the info logger
 logger = logging.getLogger(__name__)
@@ -53,9 +30,6 @@ mineflayer = require('mineflayer')
 pathfinder = require('mineflayer-pathfinder')
 blockfinder = require('mineflayer-blockfinder')(mineflayer)
 vec3 = require('vec3')
-# autoeat = require('mineflayer-auto-eat')
-# autoeat = require('/home/alex/projects/minecraft_bot/node_modules/mineflayer-auto-eat/dist/index.js')
-# exit()
 
 class ConfigLoader:
     def __init__(self, config_filename='config.json'):
@@ -68,14 +42,9 @@ class ConfigLoader:
     def load_config(self):
         with open(self.config_filename, 'r') as file:
             return json.load(file)
-
+        
 temp_config = ConfigLoader('config.json').config
 mcdata = require('minecraft-data')(temp_config['minecraft']['version'])
-
-# Save block list to a file
-"""with open(f"{temp_config['context']['path']}/blocks.txt", 'w') as file:
-    for block in mcdata.blocksArray:
-        file.write(block.name + '\n')"""
 
 class DocumentProcessor:
     def __init__(self, config):
@@ -95,77 +64,100 @@ class DocumentProcessor:
 class DocumentInput(BaseModel):
     question: str = Field()
 
+class BotActionType(BaseModel):
+    # val: str = Field(default="", description="Corresponding parameter", required=True)
+    val: str = Field(description="Corresponding parameter")
 
 class ChatAgent:
     def __init__(self, config, retriever, bot_instance):
         self.config = config
+        # Read model from json file
+        keys_filename = "keys.json"
+        with open(keys_filename, "r") as f:
+            self.keys = json.load(f)
+        os.environ["LANGCHAIN_API_KEY"] = self.keys["LANGCHAIN_API_KEY"]
         self.retriever = retriever
         self.bot_instance = bot_instance  # Passing the Bot instance to the ChatAgent
-        logger.info(f"ChatAgent function: {self.bot_instance.bot_action_come}")
-        self.agent = self.initialize_agent()
+        # logger.info(f"ChatAgent function: {self.bot_instance.bot_action_come}")
+        self.agent = None
+        self.agent_executor = None
+        self.agent_initialization()
 
-    def initialize_agent(self):
-        llm = ChatOpenAI(
-            openai_api_key=self.config['openai']['api_key'],
-            model=self.config['openai']['model'],
-            temperature=self.config['openai']['temperature'],
-            max_tokens=3000
-        )
-        # self.config['openai']['max_tokens'],
-        # llm = Ollama(model="llama2")
-        # llm = Ollama(model="mistral")
-        
-        # llm = AnthropicLLM(model='claude-2.1')
-        llm = ChatAnthropic(model='claude-3-opus-20240229')
+    def agent_initialization(self):
+        if self.config['langchain']['llm'] == "openai":
+            openai_config = self.config['llms']['openai']
+            logger.info(f"initialize_agent with key: {self.keys['OPENAI_API_KEY']}, model: {openai_config['model']}")
+            # max_tokens=3000
+            llm = ChatOpenAI(
+                openai_api_key=self.keys["OPENAI_API_KEY"],
+                model=openai_config['model'],
+                temperature=openai_config['temperature'],
+            )        
+        if self.config['langchain']['llm'] == "anthropic":
+            llm = ChatAnthropic(
+                model=self.config['llms']['anthropic']['model'],
+                api_key=self.keys["ANTHROPIC_API_KEY"],
+                temperature=self.config['llms']['anthropic']['temperature'],
+                )
+        # ollama structed_chat sample
+        # llm = Ollama(model="mistral:v0.3")
+        # mistral:v0.3
+        # llm = ChatOpenAI(
+        #     api_key="ollama",
+        #     model="llama3",
+        #     base_url="http://localhost:11434/v1",
+        # )
 
         # Read built_prompt_description from a file
         with open('build_prompt_description.txt', 'r') as file:
             build_prompt_description = file.read()
 
+        if self.config['langchain']['agent_type'] =="tool_calling_agent":
+            return_direct = False
+        elif self.config['langchain']['agent_type'] =="structed_chat":
+            return_direct = True
+
         tools = [self.create_structured_tool(func, name, description, return_direct)
                  for func, name, description, return_direct in [
                         (self.bot_instance.bot_action_come, "Command to come to Minecraft player",
-                            "Provide the name of the player asking to come", True),
+                            "Provide the name of the player asking to come", return_direct),
                         (self.bot_instance.bot_action_follow, "Command to follow for Minecraft player",
-                            "Provide the name of the player asking to follow", True),
+                            "Provide the name of the player asking to follow", return_direct),
                         (self.bot_instance.bot_action_stop, "Command to stop performing any actions in Minecraft",
-                            "You may provide the name of player asking to stop", True),
+                            "You may provide the name of player asking to stop", return_direct),
                         (self.bot_instance.bot_action_take, "Command to take an item in Minecraft",
-                            "Provide the name of the item to take", True),
+                            "Provide the name of the item to take", return_direct),
                         (self.bot_instance.bot_action_list_items, "Command to list items in Bot's inventory",
-                            "Provide the name of the bot", True),
+                            "Provide the name of the bot", return_direct),
                         (self.bot_instance.bot_action_toss, "Command to toss an item stack from Bot's inventory",
-                            "Provide the name of the item to toss", True),
+                            "Provide the name of the item to toss", return_direct),
                         (self.bot_instance.bot_action_go_sleep, "Command to go sleep in Minecraft",
-                            "Provide the name of the bed to sleep", True),
+                            "Provide the name of the bed to sleep", return_direct),
                         (self.bot_instance.bot_action_find, "Command to find an item in Minecraft",
-                            "Provide the name of the item to find", True),
+                            "Provide the name of the item to find", return_direct),
                         (self.bot_instance.bot_action_build, "Command to build anything in Minecraft",
-                            build_prompt_description, True),
+                            build_prompt_description, return_direct),
                       ]
                  ]
-        # (self.bot_instance.bot_action_build_from_blueprints, "Command to build something in Minecraft",
-        #                     "Provide the name of the item to build", True),
-
-        # tools.append(DuckDuckGoSearchRun())
-        # wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
-        # tools.append(wikipedia)
-        """tools.append(
-            Tool(
-                args_schema=DocumentInput,
-                name='Knowledge base',
-                description="Providing a game information from the knowledge base",
-                func=RetrievalQA.from_chain_type(llm=llm, retriever=self.retriever),
+        if self.config['langchain']['agent_type'] =="tool_calling_agent":
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", "You are a Minecraft player"),
+                    ("placeholder", "{chat_history}"),
+                    ("human", "{input}"),
+                    ("placeholder", "{agent_scratchpad}"),
+                ]
             )
-        )"""
-        # tools = []
-        return initialize_agent(
-            tools,
-            llm,
-            agent='chat-conversational-react-description',
-            verbose=True,
-            handle_parsing_errors=True
-        )
+            agent = create_tool_calling_agent(llm, tools, prompt)
+            self.agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+        if self.config['langchain']['agent_type'] =="structed_chat":
+            self.agent = initialize_agent(
+                tools,
+                llm,
+                agent='chat-conversational-react-description',
+                verbose=True,
+                handle_parsing_errors=True
+            )
 
     @staticmethod
     def create_structured_tool(func, name, description, return_direct):
@@ -178,7 +170,6 @@ class ChatAgent:
             return_direct=return_direct,
         )
 
-
 class Bot:
     RANGE_GOAL = 1
 
@@ -187,7 +178,9 @@ class Bot:
         self.chat_history = []
         self.config = ConfigLoader('config.json').config
         self.document_processor = DocumentProcessor(self.config)
+        self.chat_agent = ChatAgent(self.config, None, self)
         # self.retriever = self.document_processor.process_documents() # TODO: Enable
+        # chat_agent = ChatAgent(self.config, self.retriever, self) # TODO: Enable
         
         self.bot = mineflayer.createBot({
             'host': self.config['minecraft']['host'],
@@ -228,17 +221,28 @@ class Bot:
         if len(self.chat_history) > 3:
             self.chat_history = self.chat_history[-3:]
 
-        chat_agent = ChatAgent(self.config, None, self)
-        # chat_agent = ChatAgent(self.config, self.retriever, self) # TODO: Enable
-
+        user_input = message
+        logger.info(f'user_input: {user_input}')
         user_input = f"Player: {sender}. Message: {message}"
         logger.info(f'sending:\n{user_input}')
-        try:
-            response = chat_agent.agent.run(input=user_input, chat_history=self.chat_history)
-        except Exception as e:
-            logger.info(f"Error: {e}")
-            response = f"Error: {e}"
-
+        
+        if self.config['langchain']['agent_type'] =="tool_calling_agent":
+            response = self.chat_agent.agent_executor.invoke(
+                {
+                    "input": user_input,
+                    "chat_history": self.chat_history,
+                }
+            )
+        elif self.config['langchain']['agent_type'] =="structed_chat":
+            # try:
+            response = self.chat_agent.agent.run(input=user_input, chat_history=self.chat_history)
+            # except Exception as e:
+            #     logger.info(f"Error: {e}")
+            #     response = f"Error: {e}"
+        else:
+            response = 'No agent type specified in config.cfg ["tool_calling_agent", "structed_chat"]'
+        
+        logger.info(f'response:\n{response}')
         self.chat_history.append(HumanMessage(content=message))
         self.chat_history.append(AIMessage(content=response))
         self.bot.chat(response)
@@ -872,9 +876,23 @@ class Bot:
 
         return f'Finding {val}'
 
+def main():
+    os.environ['REQ_TIMEOUT'] = '400000'
+    # config = ConfigLoader('config.json').config
+    # chat_agent = ChatAgent(config, None, None)
+    # chat_history = []
+    # chat_history.append(HumanMessage(content='Hello, my name Alex, I need to create a bid.'))
+    # chat_history.append(AIMessage(content='Hello, Alex! Which date?'))
+    # user_input = '2024-05-16'
+    # response = chat_agent.agent_executor.invoke(
+    #     {
+    #         "input": user_input,
+    #         "chat_history": chat_history,
+    #     }
+    # )
+    # logger.info(f'response:\n{response}')
+    bot_instance = Bot()
 
-class BotActionType(BaseModel):
-    val: str = Field(default="", description="Corresponding parameter", required=True)
 
 if __name__ == "__main__":
-    bot_instance = Bot()
+    main()

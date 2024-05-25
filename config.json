@@ -1,8 +1,18 @@
 {
-    "openai":{
-        "api_key":"",
-        "model":"gpt-4-turbo-2024-04-09",
-        "temperature":1
+    "agent_types": ["structed_chat", "tool_calling_agent"],
+    "llms": {
+        "openai":{
+            "model":"gpt-4o-2024-05-13",
+            "temperature": 0.1
+        },
+        "anthropic":{
+            "model":"claude-3-opus-20240229",
+            "temperature": 0.1
+        }
+    },
+    "langchain":{
+        "agent_type":"structed_chat",
+        "llm":"openai"
     },
     "context":{
         "path":"./context"
@@ -12,5 +22,8 @@
         "port":33733,
         "username":"Janet",
         "version":"1.20.2"
+    },
+    "mineflayer":{
+        "timeout": 400000
     }
 }

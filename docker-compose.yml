@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  minecraft_bot:
+    container_name: minecraft_bot
+    network_mode: host
+    # ports:
+    #   - "7406:86"
+    # restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TZ=Europe/Moscow
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+      - LANGCHAIN_PROJECT=minecraft
+    volumes:
+      - ./node_modules:/usr/local/lib/python3.12/site-packages/javascript/js/node_modules
