@@ -15,5 +15,6 @@ services:
       - LANGCHAIN_TRACING_V2=true
       - LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
       - LANGCHAIN_PROJECT=minecraft
+      - REQ_TIMEOUT=4000000
     volumes:
       - ./node_modules:/usr/local/lib/python3.12/site-packages/javascript/js/node_modules
