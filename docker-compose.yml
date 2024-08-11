@@ -18,3 +18,4 @@ services:
       - REQ_TIMEOUT=4000000
     volumes:
       - ./node_modules:/usr/local/lib/python3.12/site-packages/javascript/js/node_modules
+      - ./objects:/app/objects

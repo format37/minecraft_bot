@@ -1,1 +1,0 @@
-You need to provide a detailed description of the required object. The llm will use your description to generate the blueprint of this object.

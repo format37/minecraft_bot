@@ -11,7 +11,7 @@
         }
     },
     "langchain":{
-        "agent_type":"structed_chat",
+        "agent_type":"tool_calling_agent",
         "llm":"openai"
     },
     "context":{
