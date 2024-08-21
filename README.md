@@ -17,6 +17,11 @@ Based on [mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master/exa
 * Docker
 * Langsmith api key (or you have to disable the langsmith)
 * Minecraft running server with port 33733
+#### Instalation
+```
+git clone https://github.com/format37/minecraft_bot.git
+cd minecraft_bot
+```
 #### Run
 * Configure keys.json
 * Configure config.json
